@@ -1,0 +1,289 @@
+---
+title: "data621 assignment 5"
+author: "Joby John, Jun Pan"
+date: "April 25, 2019"
+output: html_document
+---
+
+
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(car)
+library(caret)
+library(caTools)
+library(corrplot)
+library(data.table)
+library(dplyr)
+library(geoR)
+library(ggthemes)
+library(ggplot2)
+library(grid)
+library(gridExtra)
+library(kableExtra)
+library(knitr)
+library(MASS)
+library(mice)
+library(naniar)
+library(nortest)
+library(pscl)
+library(psych)
+library(testthat)
+library(ggthemes)
+library(Hmisc)
+library(tidyverse)
+library(tidyr)
+```
+
+```{r}
+train <- read.csv("https://raw.githubusercontent.com/jjohn81/DATA621_Assignment_5/master/wine-training-data.csv")
+```
+
+```{r}
+dim(train)
+```
+
+```{r}
+str(train)
+```
+
+```{r}
+summary(train)
+```
+
+```{r}
+train$ï..INDEX <-NULL
+```
+
+
+```{r}
+hist.data.frame(train)
+```
+
+
+
+
+
+```{r}
+str(train)
+```
+
+
+
+All  independent variables are continous, except variables of `LabelAppeal`, `AcidIndex` and `STARS` are ordinal.  These three ordinal variables represented by numeric values in logical order. The distances between categories/values can be considered equal . So these variables can be used in modeling as numeric variables. 
+
+
+
+
+
+
+
+
+```{r}
+sapply(train, function(x) sum(is.na(x))) %>% kable() %>% kable_styling()
+```
+
+
+
+
+```{r}
+summary_metrics <- function(df){
+  ###Creates summary metrics table
+  metrics_only <- df[, sapply(df, is.numeric)]
+   
+  df_metrics <- psych::describe(metrics_only, quant = c(.25,.75))
+  df_metrics$unique_values = rapply(metrics_only, function(x) length(unique(x)))
+  df_metrics <- 
+    dplyr::select(df_metrics, n, unique_values, min, Q.1st = Q0.25, median, mean, Q.3rd = Q0.75, 
+    max, range, sd, skew, kurtosis
+  )
+  return(df_metrics)
+}
+
+
+metrics_df <- summary_metrics(train)
+
+boxplot_data <- 
+  train %>% 
+  dplyr::select(rownames(metrics_df)[metrics_df$unique_values < 15]) %>% 
+  reshape2::melt(id.vars = "TARGET")
+
+ggplot(data = boxplot_data, aes(x = factor(value), y = TARGET)) +
+  geom_boxplot() +
+  facet_wrap( ~ variable, scales = "free") +
+  coord_flip() +
+  ggthemes::theme_fivethirtyeight()
+```
+
+
+```{r}
+train_clean<- mice(train,m=1,maxit=1)
+```
+
+
+```{r}
+densityplot(train_clean)
+```
+```{r}
+head(train_clean)
+```
+
+
+```{r}
+df.train.nomissing <- mice::complete(train_clean)
+```
+
+```{r}
+head(df.train.nomissing)
+```
+
+```{r}
+str(df.train.nomissing)
+```
+
+```{r}
+df.train.nooutliers <- df.train.nomissing
+
+id <- c(1:15)
+for (val in id) {
+  qnt <- quantile(df.train.nooutliers[,val], probs=c(.25, .75), na.rm = T)
+  caps <- quantile(df.train.nooutliers[,val], probs=c(.05, .95), na.rm = T)
+  H <- 1.5 * IQR(df.train.nooutliers[,val], na.rm = T)
+  df.train.nooutliers[,val][df.train.nooutliers[,val] < (qnt[1] - H)] <- caps[1]
+  df.train.nooutliers[,val][df.train.nooutliers[,val] > (qnt[2] + H)] <- caps[2]
+}
+
+df.train.transformed <- df.train.nooutliers
+
+```
+
+
+```{r}
+head(df.train.transformed)
+```
+
+```{r}
+str(df.train.transformed)
+```
+
+
+
+
+
+```{r}
+train1 <- df.train.transformed
+```
+
+
+
+
+
+
+```{r}
+corrplot(cor(train1), method="square")
+```
+
+
+split train dataset
+```{r}
+set.seed(999) 
+sampl = sample.split(train1$TARGET, SplitRatio = .80)
+wine_train1 <- subset(train1, sampl == TRUE)
+wine_test1 <- subset(train1, sampl == FALSE)
+```
+
+
+	
+```{r}
+dim(wine_train1)
+```
+
+
+```{r}
+dim(wine_test1)
+```
+
+
+Poisson, Full model
+```{r}
+full_model = glm(TARGET ~  ., data=wine_train1, family=poisson)
+summary(full_model)
+```
+
+```{r}
+plot(full_model)
+```
+
+
+
+
+Poisson reduced model
+
+```{r}
+reduced_model = glm(TARGET ~  .-FixedAcidity-CitricAcid-ResidualSugar-Density-Alcohol, data=wine_train1, family=poisson)
+summary(reduced_model)
+```
+
+```{r}
+plot(reduced_model)
+```
+
+
+Using the squared loss to validate the model.
+```{r}
+modelValidation <- function(mod, test){
+  preds = predict(mod, test)
+  diffMat = as.numeric(preds) - as.numeric(test$TARGET)
+  diffMat = diffMat^2
+  loss <- mean(diffMat)
+  return(loss)
+}
+```
+
+```{r}
+modelValidation(full_model, wine_test1)
+```
+
+```{r}
+modelValidation(reduced_model, wine_test1)
+```
+
+Negative binomial model
+```{r}
+negative_binomial_model <- glm.nb(TARGET~., data=wine_train1)
+summary(negative_binomial_model)
+```
+```{r}
+plot(negative_binomial_model)
+```
+```{r}
+modelValidation(negative_binomial_model, wine_test1)
+```
+
+
+
+Quasi-Poisson Model
+```{r}
+quasi_p_model <- glm(TARGET~., data=wine_train1, family=quasipoisson)
+summary(quasi_p_model)
+```
+```{r}
+plot(quasi_p_model)
+```
+```{r}
+modelValidation(quasi_p_model, wine_test1)
+```
+
+```{r}
+library(pscl)
+```
+
+Zero-Inflated Model
+```{r}
+z_inflate_model <- pscl::zeroinfl(TARGET~., data=wine_train1)
+summary(z_inflate_model)
+```
+
+```{r}
+modelValidation(z_inflate_model, wine_test1)
+```
+
