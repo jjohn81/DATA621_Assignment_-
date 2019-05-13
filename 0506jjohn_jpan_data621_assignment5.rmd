@@ -5,7 +5,13 @@ date: "April 25, 2019"
 output: html_document
 ---
 
-
+In this we will explore, analyze and model a data set containing information on
+approximately 12,000 commercially available wines. The variables are mostly related to the chemical properties of
+the wine being sold. The response variable is the number of sample cases of wine that were purchased by wine
+distribution companies after sampling a wine. These cases would be used to provide tasting samples to
+restaurants and wine stores around the United States. The more sample cases purchased, the more likely is a
+wine to be sold at a high end restaurant. Our objective is to build a count regression model to predict the number of 
+cases of wine that will be sold given certain properties of the wine.
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
 library(car)
@@ -36,54 +42,23 @@ library(tidyr)
 
 ```{r}
 train <- read.csv("https://raw.githubusercontent.com/jjohn81/DATA621_Assignment_5/master/wine-training-data.csv")
+eval <- read.csv("https://raw.githubusercontent.com/jjohn81/DATA621_Assignment_5/master/wine-evaluation-data.csv")
+train$INDEX <-NULL
 ```
 
-```{r}
-dim(train)
-```
-
-```{r}
-str(train)
-```
-
+The dataset contains ```nrow(train)``` observations and ```ncol(train)``` variables.
+All  independent variables are continous, except   `LabelAppeal`, `AcidIndex` and `STARS` which are ordinal.These three ordinal variables represented by numeric values in logical order. The distances between categories/values can be considered equal,so these variables can be used in modeling as numeric variables. 
+Below table displays summary of the data.
+ 
 ```{r}
 summary(train)
 ```
 
-```{r}
-train$ï..INDEX <-NULL
-```
-
-variance and mean is not same so we need to either quasi or negative bionomial regression.
-```{r}
-mean(train$TARGET)
-
-var(train$TARGET)
-hist(train$TARGET)
-```
+ 
 
 ```{r}
 hist.data.frame(train)
 ```
-
-
-
-
-
-```{r}
-str(train)
-```
-
-
-
-All  independent variables are continous, except variables of `LabelAppeal`, `AcidIndex` and `STARS` are ordinal.  These three ordinal variables represented by numeric values in logical order. The distances between categories/values can be considered equal . So these variables can be used in modeling as numeric variables. 
-
-
-
-
-
-
-
 
 ```{r}
 sapply(train, function(x) sum(is.na(x))) %>% kable() %>% kable_styling()
@@ -166,7 +141,7 @@ train1 <- df.train.transformed
 
 
 ```{r}
-corrplot(cor(train1), method="square")
+corrplot(cor(train1~.-TARGET), method="square")
 ```
 
 
@@ -189,33 +164,49 @@ dim(wine_train1)
 dim(wine_test1)
 ```
 
+#### Models
+variance and mean is not same so we need to either quasi or negative bionomial regression.
 
-Poisson, Full model
+```{r}
+mean(train$TARGET)
+var(train$TARGET)
+hist(train$TARGET)
+
+```
+
+#####Poisson, Full model
 ```{r}
 full_model = glm(TARGET ~  ., data=wine_train1, family=poisson)
 summary(full_model)
-```
+qchisq(0.95, df.residual(full_model))
+deviance(full_model)
+ pr <- residuals(full_model,"pearson")
+  sum(pr^2)
+   phi <- sum(pr^2)/df.residual(full_model)
 
+  round(c(phi,sqrt(phi)),4)
+```
+ 
+#####Negative binomial model and stepwise
 ```{r}
-plot(full_model)
+negative_binomial_model <- glm.nb(TARGET~., data=wine_train1)
+
+step_neg_binomial_model <- step(negative_binomial_model)
+summary(negative_binomial_model)
 ```
 
+#####Quasi-Poisson Model and stepwise
 
-
-
-Poisson reduced model
-
+Step wise wouldnt work here because qausipossion doesnt have likelihood  function so will select a model with only signficant variables. 
 ```{r}
-reduced_model = glm(TARGET ~  .-FixedAcidity-CitricAcid-ResidualSugar-Density-Alcohol, data=wine_train1, family=poisson)
-summary(reduced_model)
+ 
+quasi_p_model <- glm(TARGET~., data=wine_train1, family=quasipoisson)
+summary(quasi_p_model)
+sig_quasi_p_model <- glm(TARGET~.-FixedAcidity-CitricAcid-Alcohol, data=wine_train1, family=quasipoisson)
 ```
-
-```{r}
-plot(reduced_model)
-```
-
 
 Using the squared loss to validate the model.
+
 ```{r}
 modelValidation <- function(mod, test){
   preds = predict(mod, test)
@@ -227,50 +218,15 @@ modelValidation <- function(mod, test){
 ```
 
 ```{r}
-modelValidation(full_model, wine_test1)
-```
+eval$Target_Possion <- predict(negative_binomial_model, type="response", eval)
+eval$Target_negative_binomial_model <- predict(negative_binomial_model, type="response", eval)
+eval$Target_step_negative_binomial_model <- predict(step_neg_binomial_model, type="response",eval)
+eval$Target_quasi_p_model <- predict(quasi_p_model, type="response",eval)
+eval$Target_step_quasi_p_model <- predict(sig_quasi_p_model, type="response",eval)
 
-```{r}
-modelValidation(reduced_model, wine_test1)
+ hist(eval$Target_Possion)
+ hist(eval$Target_negative_binomial_model)
+ hist(eval$Target_step_negative_binomial_model)
+ hist(eval$Target_quasi_p_model)
+ hist(eval$Target_step_quasi_p_model)
 ```
-
-Negative binomial model
-```{r}
-negative_binomial_model <- glm.nb(TARGET~., data=wine_train1)
-summary(negative_binomial_model)
-```
-```{r}
-plot(negative_binomial_model)
-```
-```{r}
-modelValidation(negative_binomial_model, wine_test1)
-```
-
-
-
-Quasi-Poisson Model
-```{r}
-quasi_p_model <- glm(TARGET~., data=wine_train1, family=quasipoisson)
-summary(quasi_p_model)
-```
-```{r}
-plot(quasi_p_model)
-```
-```{r}
-modelValidation(quasi_p_model, wine_test1)
-```
-
-```{r}
-library(pscl)
-```
-
-Zero-Inflated Model
-```{r}
-z_inflate_model <- pscl::zeroinfl(TARGET~., data=wine_train1)
-summary(z_inflate_model)
-```
-
-```{r}
-modelValidation(z_inflate_model, wine_test1)
-```
-
