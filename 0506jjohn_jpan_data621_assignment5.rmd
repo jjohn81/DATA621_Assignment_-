@@ -54,6 +54,13 @@ summary(train)
 train$ï..INDEX <-NULL
 ```
 
+variance and mean is not same so we need to either quasi or negative bionomial regression.
+```{r}
+mean(train$TARGET)
+
+var(train$TARGET)
+hist(train$TARGET)
+```
 
 ```{r}
 hist.data.frame(train)
@@ -123,22 +130,12 @@ train_clean<- mice(train,m=1,maxit=1)
 ```{r}
 densityplot(train_clean)
 ```
-```{r}
-head(train_clean)
-```
 
 
 ```{r}
 df.train.nomissing <- mice::complete(train_clean)
 ```
 
-```{r}
-head(df.train.nomissing)
-```
-
-```{r}
-str(df.train.nomissing)
-```
 
 ```{r}
 df.train.nooutliers <- df.train.nomissing
@@ -155,16 +152,6 @@ for (val in id) {
 df.train.transformed <- df.train.nooutliers
 
 ```
-
-
-```{r}
-head(df.train.transformed)
-```
-
-```{r}
-str(df.train.transformed)
-```
-
 
 
 
