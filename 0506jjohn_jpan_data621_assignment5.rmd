@@ -13,7 +13,7 @@ restaurants and wine stores around the United States. The more sample cases purc
 wine to be sold at a high end restaurant. Our objective is to build a count regression model to predict the number of 
 cases of wine that will be sold given certain properties of the wine.
 
-```{r, echo=FALSE, warning=FALSE, message=FALSE}
+```{r, echo=FALSE,echo=FALSE, warning=FALSE, message=FALSE}
 library(car)
 library(caret)
 library(caTools)
@@ -38,36 +38,37 @@ library(ggthemes)
 library(Hmisc)
 library(tidyverse)
 library(tidyr)
+library(arm)
 ```
 
-```{r}
+```{r, echo=FALSE}
 train <- read.csv("https://raw.githubusercontent.com/jjohn81/DATA621_Assignment_5/master/wine-training-data.csv")
 eval <- read.csv("https://raw.githubusercontent.com/jjohn81/DATA621_Assignment_5/master/wine-evaluation-data.csv")
-train$INDEX <-NULL
+train$ï..INDEX <-NULL
 ```
 
 The dataset contains ```nrow(train)``` observations and ```ncol(train)``` variables.
-All  independent variables are continous, except   `LabelAppeal`, `AcidIndex` and `STARS` which are ordinal.These three ordinal variables represented by numeric values in logical order. The distances between categories/values can be considered equal,so these variables can be used in modeling as numeric variables. 
+All independent variables are continous, except   `LabelAppeal`, `AcidIndex` and `STARS` which are ordinal.These three ordinal variables represented by numeric values in logical order. The distances between categories/values can be considered equal,so these variables can be used in modeling as numeric variables. 
 Below table displays summary of the data.
  
-```{r}
+```{r, echo=FALSE}
 summary(train)
 ```
 
  
 
-```{r}
+```{r, echo=FALSE}
 hist.data.frame(train)
 ```
 
-```{r}
+```{r, echo=FALSE}
 sapply(train, function(x) sum(is.na(x))) %>% kable() %>% kable_styling()
 ```
 
 
 
 
-```{r}
+```{r, echo=FALSE}
 summary_metrics <- function(df){
   ###Creates summary metrics table
   metrics_only <- df[, sapply(df, is.numeric)]
@@ -97,22 +98,22 @@ ggplot(data = boxplot_data, aes(x = factor(value), y = TARGET)) +
 ```
 
 
-```{r}
+```{r, echo=FALSE}
 train_clean<- mice(train,m=1,maxit=1)
 ```
 
-
-```{r}
+The distributions of the continuous predictor variables all very similar. They have smaller tails and greater peaks than the normal distribution.
+```{r, echo=FALSE}
 densityplot(train_clean)
 ```
 
 
-```{r}
+```{r, echo=FALSE}
 df.train.nomissing <- mice::complete(train_clean)
 ```
 
 
-```{r}
+```{r, echo=FALSE}
 df.train.nooutliers <- df.train.nomissing
 
 id <- c(1:15)
@@ -131,83 +132,78 @@ df.train.transformed <- df.train.nooutliers
 
 
 
-```{r}
+```{r, echo=FALSE}
 train1 <- df.train.transformed
 ```
 
 
-
-
-
-
-```{r}
-corrplot(cor(train1~.-TARGET), method="square")
+Few of the predictor variables are correlated with each other, suggesting that our models will not have much multicollinearity. STARS is only slightly correlated with LabelAppeal and AcidIndex.
+```{r, echo=FALSE}
+corrplot::corrplot(cor(train1), method="square")
 ```
 
+rownames(all_corr) <- 1:nrow(all_corr)
 
-split train dataset
-```{r}
-set.seed(999) 
-sampl = sample.split(train1$TARGET, SplitRatio = .80)
-wine_train1 <- subset(train1, sampl == TRUE)
-wine_test1 <- subset(train1, sampl == FALSE)
-```
+kable(head(filter(all_corr, Var1 == "TARGET"), 20), digits = 3, row.names = T, caption = "Top Corrrelations with the Response Variable")
 
 
-	
-```{r}
-dim(wine_train1)
-```
-
-
-```{r}
-dim(wine_test1)
-```
 
 #### Models
-variance and mean is not same so we need to either quasi or negative bionomial regression.
+variance and mean is not same so we need to either use quasiPossion or negative bionomial regression.
 
-```{r}
-mean(train$TARGET)
-var(train$TARGET)
-hist(train$TARGET)
+```{r, echo=FALSE}
+mean(train1$TARGET)
+var(train1$TARGET)
+hist(train1$TARGET)
 
 ```
 
 #####Poisson, Full model
-```{r}
-full_model = glm(TARGET ~  ., data=wine_train1, family=poisson)
-summary(full_model)
-qchisq(0.95, df.residual(full_model))
-deviance(full_model)
- pr <- residuals(full_model,"pearson")
-  sum(pr^2)
-   phi <- sum(pr^2)/df.residual(full_model)
-
-  round(c(phi,sqrt(phi)),4)
-```
- 
-#####Negative binomial model and stepwise
-```{r}
-negative_binomial_model <- glm.nb(TARGET~., data=wine_train1)
-
-step_neg_binomial_model <- step(negative_binomial_model)
-summary(negative_binomial_model)
+Poisson regression model out shows Dispersion parameter for poisson family taken to be 1. Poisson glm requires mean and variance to be  the same. 
+```{r, echo=FALSE}
+poisson_Model = glm(TARGET ~  ., data=train1, family=poisson)
+summary(poisson_Model)
+par(mfrow=c(2,2))
+plot(poisson_Model)
 ```
 
-#####Quasi-Poisson Model and stepwise
+#####Quasi-Poisson Model and 
 
-Step wise wouldnt work here because qausipossion doesnt have likelihood  function so will select a model with only signficant variables. 
-```{r}
+Step wise wouldnt work here because qausipossion doesnt have likelihood function so will select a model with only signficant variables. Based on the model output from the both models, we see the model with only significant variables is as good as the full quassi poissson distribution but less complex. Since we have under dispersion, quassi poisson model might best model that fits our data. 
+```{r, echo=FALSE}
  
-quasi_p_model <- glm(TARGET~., data=wine_train1, family=quasipoisson)
+quasi_p_model <- glm(TARGET~., data=train1, family=quasipoisson)
 summary(quasi_p_model)
-sig_quasi_p_model <- glm(TARGET~.-FixedAcidity-CitricAcid-Alcohol, data=wine_train1, family=quasipoisson)
+par(mfrow=c(2,2))
+plot(quasi_p_model)
 ```
+
+
+
+```{r, echo=FALSE}
+sig_quasi_p_model <- glm(TARGET~.-FixedAcidity-ResidualSugar-Density, data=train1, family=quasipoisson)
+summary(sig_quasi_p_model)
+par(mfrow=c(2,2))
+plot(sig_quasi_p_model)
+```
+#####Negative binomial model and stepwise
+Since we under disperssion, negative binomail might not fit our data correctly. This can seen by looking at the overdispersion paramer displayed in the model output.
+
+```{r, echo=FALSE}
+negative_binomial_model <- glm.nb(TARGET~., data = train1)
+summary(negative_binomial_model)
+par(mfrow=c(2,2))
+plot(negative_binomial_model)
+```
+```{r, echo=FALSE}
+step_neg_binomial_model <- step(negative_binomial_model)
+summary(step_neg_binomial_model)
+```
+
 
 Using the squared loss to validate the model.
 
-```{r}
+```{r, echo=FALSE}
 modelValidation <- function(mod, test){
   preds = predict(mod, test)
   diffMat = as.numeric(preds) - as.numeric(test$TARGET)
@@ -217,16 +213,41 @@ modelValidation <- function(mod, test){
 }
 ```
 
-```{r}
-eval$Target_Possion <- predict(negative_binomial_model, type="response", eval)
+#### Model Selection
+From the table below we see that coeffecients of the both models are same but the error terms are not same beacuse over/under dispersion. Because of this we will ignore the poisson model.
+```{r, echo=FALSE}
+cPoisson <- coef(poisson_Model)
+
+cquasi <- coef(quasi_p_model)
+
+
+sPoisson <- se.coef(poisson_Model)
+squasi <- se.coef(quasi_p_model)
+
+cbind(cPoisson, sPoisson,cquasi, squasi)
+```
+
+
+```{r, echo=FALSE}
+ anova(negative_binomial_model,step_neg_binomial_model, test = 'Chisq')
+ anova(quasi_p_model,sig_quasi_p_model, test = 'Chisq')
+
+```
+
+Preidcted count for all the models do have similar distributions as seen by the histograms below. We belive the sig_quasi_p_model models fits the data better than other models. This model is simpler than quassi poisson model. Since we ahve under dispersion, we are not selectings negative binomail model. 
+```{r, echo=FALSE}
+eval$Target_Possion <- predict(poisson_Model, type="response", eval)
 eval$Target_negative_binomial_model <- predict(negative_binomial_model, type="response", eval)
 eval$Target_step_negative_binomial_model <- predict(step_neg_binomial_model, type="response",eval)
 eval$Target_quasi_p_model <- predict(quasi_p_model, type="response",eval)
 eval$Target_step_quasi_p_model <- predict(sig_quasi_p_model, type="response",eval)
+par(mfrow=c(3, 2))
 
- hist(eval$Target_Possion)
- hist(eval$Target_negative_binomial_model)
- hist(eval$Target_step_negative_binomial_model)
- hist(eval$Target_quasi_p_model)
- hist(eval$Target_step_quasi_p_model)
+hist(eval$Target_Possion)
+hist(eval$Target_negative_binomial_model)
+hist(eval$Target_step_negative_binomial_model)
+hist(eval$Target_quasi_p_model)
+hist(eval$Target_step_quasi_p_model)
+
+write.csv(eval,'Predicted.cs')
 ```
